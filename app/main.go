@@ -43,7 +43,6 @@ func showTopics() {
 
 // The method will create topic if it doesn't exist if kafka option AUTO_CREATE_TOPICS_ENABLE=yes is set
 func writeToKafka() {
-	// to produce messages
 	partition := 0
 
 	if _, err := kafka.Dial(tcp, addr); err != nil {
@@ -54,7 +53,8 @@ func writeToKafka() {
 	if err != nil {
 		log.Fatal("can not lookup partition: " + err.Error())
 	}
-	p.Leader.Host = "localhost"
+
+	p.Leader.Host = "localhost" // https://github.com/segmentio/kafka-go/issues/591
 	conn, err := kafka.DefaultDialer.DialPartition(context.TODO(), tcp, addr, p)
 
 	if err != nil {
@@ -62,6 +62,8 @@ func writeToKafka() {
 	}
 
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	defer conn.Close()
+
 	_, err = conn.WriteMessages(
 		kafka.Message{Value: []byte("one!")},
 		kafka.Message{Value: []byte("two!")},
@@ -77,23 +79,33 @@ func writeToKafka() {
 }
 
 func readFromKafka() {
-	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:   []string{addr},
-		Topic:     topic,
-		Partition: 0,
-		MinBytes:  10e3, // 10KB
-		MaxBytes:  10e6, // 10MB
-	})
+	// to produce messages
+	partition := 0
 
-	for {
-		m, err := r.ReadMessage(context.Background())
-		if err != nil {
-			fmt.Printf("read error: %s", err.Error())
-		}
-		fmt.Printf("message at offset %d: %s = %s\n", m.Offset, string(m.Key), string(m.Value))
+	if _, err := kafka.Dial(tcp, addr); err != nil {
+		log.Fatal("failed to dial leader:", err)
 	}
 
-	if err := r.Close(); err != nil {
-		log.Fatal("failed to close reader:", err)
+	p, err := kafka.DefaultDialer.LookupPartition(context.TODO(), tcp, addr, topic, partition)
+	if err != nil {
+		log.Fatal("can not lookup partition: " + err.Error())
+	}
+
+	p.Leader.Host = "localhost" // https://github.com/segmentio/kafka-go/issues/591
+	conn, err := kafka.DefaultDialer.DialPartition(context.TODO(), tcp, addr, p)
+	defer conn.Close()
+
+	if err != nil {
+		log.Fatal("failed to dial leader:", err)
+	}
+
+	for {
+		m, err := conn.ReadMessage(1024 * 1024)
+		if err != nil {
+			log.Printf("Finish reading with an error: %s", err.Error())
+			break
+		}
+		fmt.Printf("Got message: partition:%d topic:%s, offset:%d message:%s\n",
+			m.Partition, m.Topic, m.Offset, string(m.Value))
 	}
 }
