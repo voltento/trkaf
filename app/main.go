@@ -1,35 +1,35 @@
 package main
 
 import (
+	"context"
 	"github.com/segmentio/kafka-go"
 	"log"
-	"net"
-	"strconv"
+	"time"
 )
 
 // docker-compose up kafka
 // run app
 func main() {
+	topic := "my-topic"
+	partition := 0
 
-	const addr = "127.0.0.1:9092"
-	const topic = "my-topic1"
-	const tcp = "tcp"
+	conn, err := kafka.DialLeader(context.Background(), "tcp", "localhost:9092", topic, partition)
+	if err != nil {
+		log.Fatal("failed to dial leader:", err)
+	}
 
-	// to connect to the kafka leader via an existing non-leader connection rather than using DialLeader
-	conn, err := kafka.Dial("tcp", "localhost:9092")
+	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	_, err = conn.WriteMessages(
+		kafka.Message{Value: []byte("one!")},
+		kafka.Message{Value: []byte("two!")},
+		kafka.Message{Value: []byte("three!")},
+	)
 	if err != nil {
-		panic(err.Error())
+		log.Fatal("failed to write messages:", err)
 	}
-	defer conn.Close()
-	controller, err := conn.Controller()
-	if err != nil {
-		panic(err.Error())
+
+	if err := conn.Close(); err != nil {
+		log.Fatal("failed to close writer:", err)
 	}
-	var connLeader *kafka.Conn
-	connLeader, err = kafka.Dial("tcp", net.JoinHostPort(controller.Host, strconv.Itoa(controller.Port)))
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	defer connLeader.Close()
 
 }
