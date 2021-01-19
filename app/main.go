@@ -10,9 +10,10 @@ import (
 )
 
 func main() {
+	go readFromKafka()
 	showTopics()
 	writeToKafka()
-	readFromKafka()
+	<-time.After(time.Second * 10)
 }
 
 const addr = "127.0.0.1:9092"
@@ -49,14 +50,7 @@ func writeToKafka() {
 		log.Fatal("failed to dial leader:", err)
 	}
 
-	p, err := kafka.DefaultDialer.LookupPartition(context.TODO(), tcp, addr, topic, partition)
-	if err != nil {
-		log.Fatal("can not lookup partition: " + err.Error())
-	}
-
-	p.Leader.Host = "localhost" // https://github.com/segmentio/kafka-go/issues/591
-	conn, err := kafka.DefaultDialer.DialPartition(context.TODO(), tcp, addr, p)
-
+	conn, err := kafka.DefaultDialer.DialLeader(context.TODO(), tcp, addr, topic, partition)
 	if err != nil {
 		log.Fatal("failed to dial leader:", err)
 	}
@@ -79,33 +73,25 @@ func writeToKafka() {
 }
 
 func readFromKafka() {
-	// to produce messages
-	partition := 0
+	r := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:         []string{addr},
+		GroupID:         "consumer-group-id",
+		Topic:           topic,
+		ReadLagInterval: time.Second,
+		MaxWait:         time.Second,
+	})
 
-	if _, err := kafka.Dial(tcp, addr); err != nil {
-		log.Fatal("failed to dial leader:", err)
-	}
-
-	p, err := kafka.DefaultDialer.LookupPartition(context.TODO(), tcp, addr, topic, partition)
-	if err != nil {
-		log.Fatal("can not lookup partition: " + err.Error())
-	}
-
-	p.Leader.Host = "localhost" // https://github.com/segmentio/kafka-go/issues/591
-	conn, err := kafka.DefaultDialer.DialPartition(context.TODO(), tcp, addr, p)
-	defer conn.Close()
-
-	if err != nil {
-		log.Fatal("failed to dial leader:", err)
-	}
+	r.SetOffset(0)
 
 	for {
-		m, err := conn.ReadMessage(1024 * 1024)
+		m, err := r.ReadMessage(context.Background())
 		if err != nil {
-			log.Printf("Finish reading with an error: %s", err.Error())
 			break
 		}
-		fmt.Printf("Got message: partition:%d topic:%s, offset:%d message:%s\n",
-			m.Partition, m.Topic, m.Offset, string(m.Value))
+		fmt.Printf("message at topic/partition/offset %v/%v/%v: %s = %s\n", m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
+	}
+
+	if err := r.Close(); err != nil {
+		log.Fatal("failed to close reader:", err)
 	}
 }
