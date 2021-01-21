@@ -2,23 +2,41 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 )
 
-func main() {
-	go readFromKafka()
-	showTopics()
-	writeToKafka()
-	<-time.After(time.Second * 10)
+const addr = "127.0.0.1:9092"
+const topic = "my-topic"
+const tcp = "tcp"
+
+func isWriterApp() bool {
+	isWriter := flag.Bool("w", false, "is writer app")
+	flag.Parse()
+	return *isWriter
 }
 
-const addr = "127.0.0.1:9092"
-const topic = "my-topic1"
-const tcp = "tcp"
+func main() {
+	if isWriterApp() {
+		log.Printf("start writing to the topic: %s\n", topic)
+		i := 0
+		for {
+			writeToKafka([]byte(strconv.Itoa(i)))
+			<-time.After(time.Second * 2)
+			i += 1
+		}
+	} else {
+		log.Printf("start read from the topic: %s\n", topic)
+		const flags = log.Lmsgprefix | log.Ldate | log.Lmicroseconds
+		readFromKafka(log.New(os.Stdout, "worker_1: ", flags))
+	}
+}
 
 func showTopics() {
 	conn, err := kafka.Dial(tcp, addr)
@@ -43,28 +61,24 @@ func showTopics() {
 }
 
 // The method will create topic if it doesn't exist if kafka option AUTO_CREATE_TOPICS_ENABLE=yes is set
-func writeToKafka() {
+func writeToKafka(msg []byte) {
 	partition := 0
-
-	if _, err := kafka.Dial(tcp, addr); err != nil {
-		log.Fatal("failed to dial leader:", err)
-	}
 
 	conn, err := kafka.DefaultDialer.DialLeader(context.TODO(), tcp, addr, topic, partition)
 	if err != nil {
 		log.Fatal("failed to dial leader:", err)
 	}
 
-	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	// conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
 	defer conn.Close()
 
 	_, err = conn.WriteMessages(
-		kafka.Message{Value: []byte("one!")},
-		kafka.Message{Value: []byte("two!")},
-		kafka.Message{Value: []byte("three!")},
+		kafka.Message{Value: msg},
 	)
 	if err != nil {
 		log.Fatal("failed to write messages:", err)
+	} else {
+		log.Printf("Wrote message '%s'\n", string(msg))
 	}
 
 	if err := conn.Close(); err != nil {
@@ -72,7 +86,7 @@ func writeToKafka() {
 	}
 }
 
-func readFromKafka() {
+func readFromKafka(logger *log.Logger) {
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:         []string{addr},
 		GroupID:         "consumer-group-id",
@@ -81,14 +95,13 @@ func readFromKafka() {
 		MaxWait:         time.Second,
 	})
 
-	r.SetOffset(0)
-
 	for {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
 			break
 		}
-		fmt.Printf("message at topic/partition/offset %v/%v/%v: %s = %s\n", m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
+
+		logger.Printf("message at topic/partition/offset %v/%v/%v: %s = %s\n", m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
 	}
 
 	if err := r.Close(); err != nil {
