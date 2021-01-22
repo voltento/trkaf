@@ -15,7 +15,7 @@ limitations under the License.
 */
 package main
 
-import "github.com/voltento/trkaf/cmd"
+import "github.com/voltento/trkaf/app/cmd"
 
 func main() {
 	cmd.Execute()

@@ -16,15 +16,17 @@ limitations under the License.
 package cmd
 
 import (
-	"github.com/spf13/cobra"
 	"github.com/voltento/trkaf/internal/kf"
 	"log"
-	"os"
+	"strconv"
+	"time"
+
+	"github.com/spf13/cobra"
 )
 
-// consumerCmd represents the consumer command
-var consumerCmd = &cobra.Command{
-	Use:   "consumer",
+// providerCmd represents the provider command
+var providerCmd = &cobra.Command{
+	Use:   "provider",
 	Short: "A brief description of your command",
 	Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
@@ -33,23 +35,45 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		const tcp = "tcp"
 		conn := kf.NewKafka(tcp, addr)
-		log.Printf("start read from the topic: %s\n", topic)
-		const flags = log.Lmsgprefix | log.Ldate | log.Lmicroseconds
-		conn.ReadFromKafka(topic, log.New(os.Stdout, "worker_1: ", flags))
+		log.Printf("start writing to the topic: %s\n", topic)
+		i := 0
+		partition := getRoundIterator(0, 2)
+		for {
+			conn.WriteToKafka(topic, partition(), []byte(strconv.Itoa(i)))
+			<-time.After(time.Second * 2)
+			i += 1
+		}
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(consumerCmd)
+	rootCmd.AddCommand(providerCmd)
 
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	// consumerCmd.PersistentFlags().String("foo", "", "A help for foo")
+	// providerCmd.PersistentFlags().String("foo", "", "A help for foo")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// consumerCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// providerCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+func getRoundIterator(from, to int) func() int {
+	if from > to {
+		from, to = to, from
+	}
+
+	counter := 0
+	return func() int {
+		r := counter
+		counter += 1
+		if counter >= to {
+			counter = from
+		}
+		return r
+	}
 }
