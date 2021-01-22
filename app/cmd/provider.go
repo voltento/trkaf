@@ -38,12 +38,12 @@ to quickly create a Cobra application.`,
 		const tcp = "tcp"
 		conn := kf.NewKafka(tcp, addr)
 		log.Printf("start writing to the topic: %s\n", topic)
-		i := 0
+
 		partition := getRoundIterator(0, 2)
+		val := getRoundIterator(0, 1e6)
 		for {
-			conn.WriteToKafka(topic, partition(), []byte(strconv.Itoa(i)))
+			conn.WriteToKafka(topic, partition(), []byte(strconv.Itoa(val())))
 			<-time.After(time.Second * 2)
-			i += 1
 		}
 	},
 }

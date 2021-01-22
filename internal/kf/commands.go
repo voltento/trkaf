@@ -46,7 +46,8 @@ func (k *Kafka) ShowTopics() {
 
 // The method will create topic if it doesn't exist if kafka option AUTO_CREATE_TOPICS_ENABLE=yes is set
 func (k *Kafka) WriteToKafka(topicName string, partition int, msg []byte) {
-	conn, err := kafka.DefaultDialer.DialLeader(context.TODO(), k.Scheme, k.Addr, topicName, partition)
+	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
+	conn, err := kafka.DefaultDialer.DialLeader(ctx, k.Scheme, k.Addr, topicName, partition)
 	if err != nil {
 		log.Fatal("failed to dial leader:", err)
 	}
