@@ -34,6 +34,7 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		conn := kf.NewKafka(tcp, addr)
+
 		log.Printf("start read from the topic: %s\n", topic)
 		const flags = log.Lmsgprefix | log.Ldate | log.Lmicroseconds
 		conn.ReadFromKafka(topic, log.New(os.Stdout, "worker_1: ", flags))
@@ -52,4 +53,7 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// consumerCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+
+	consumerCmd.Flags().StringVarP(&topic, "topic", "t", topic, "Topic name")
+	consumerCmd.Flags().StringVarP(&addr, "addr", "d", addr, "Kafka address")
 }
